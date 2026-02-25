@@ -140,6 +140,36 @@ Notes:
 - This is the easiest clickable option and keeps the project offline/free.
 - A Render static site alone cannot run the FFmpeg/Python/TTS reel pipeline.
 
+## Easy Local Web UI Start / Stop (Recommended)
+This runs the browser-based UI **on your own computer** (still free, local rendering).
+
+Start:
+```bash
+cd "/Users/johnnymaris/Documents/New project/tradevera-reels-factory"
+./start_local_web.sh
+```
+
+Stop:
+```bash
+cd "/Users/johnnymaris/Documents/New project/tradevera-reels-factory"
+./stop_local_web.sh
+```
+
+Optional helper commands:
+```bash
+python3 tools/local_web_service.py status
+python3 tools/local_web_service.py logs --lines 80
+```
+
+Defaults:
+- URL: `http://127.0.0.1:8000`
+- Logs: `.run/web_app.log`
+
+Custom port example:
+```bash
+./start_local_web.sh --port 8010
+```
+
 ## Hosted Web UI (Render)
 If you want to run it on the internet, deploy it as a **Render Web Service** (not Static Site). A Static Site cannot execute the Python + FFmpeg + TTS backend.
 
