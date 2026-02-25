@@ -140,6 +140,30 @@ Notes:
 - This is the easiest clickable option and keeps the project offline/free.
 - A Render static site alone cannot run the FFmpeg/Python/TTS reel pipeline.
 
+## Hosted Web UI (Render)
+If you want to run it on the internet, deploy it as a **Render Web Service** (not Static Site). A Static Site cannot execute the Python + FFmpeg + TTS backend.
+
+This repo now includes:
+- `web_app.py` (browser UI + hosted backend wrapper)
+- `Dockerfile` (installs `ffmpeg` + `espeak-ng`)
+- `render.yaml` (Render Blueprint config, inside `tradevera-reels-factory/`)
+
+### Quick Render Setup (Web Service, Docker)
+Use **New Web Service** in Render (not New Static Site), then set:
+
+- Repository: your repo
+- Branch: `main`
+- Root Directory: `tradevera-reels-factory`
+- Runtime: `Docker`
+- Build Command: leave blank (Dockerfile is used)
+- Start Command: leave blank (Dockerfile CMD is used)
+
+Optional env vars:
+- `TV_WEB_SECRET` = any random string (recommended)
+- `PIPER_MODEL` = path inside the container only if you later customize Piper (default hosted fallback is eSpeak)
+
+After deploy, open the site URL and use the browser form to generate reels.
+
 ## CLI Reference
 - `--idea "text"` (required)
 - `--images path(s)` optional, 0-12 images

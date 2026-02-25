@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TradeVera Reels Factory</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <main class="app-shell">
+    <section class="hero panel">
+      <div class="hero-top">
+        <div class="brand-lockup">
+          <div class="accent-line"></div>
+          <p class="eyebrow">TRADEVERA // REELS FACTORY</p>
+          <h1>Generate premium trading reels from an idea.</h1>
+          <p class="sub">Hosted UI for the same offline TradeVera pipeline (FFmpeg + local TTS on the server). Outputs: reel.mp4, thumbnail, caption, hooks, script, build log.</p>
+        </div>
+        <div class="status-card">
+          <p class="status-label">Service Status</p>
+          <p class="status-value {{ 'busy' if busy else 'ready' }}">{{ 'BUILDING' if busy else 'READY' }}</p>
+          <p class="status-note">Single build queue to keep renders stable.</p>
+        </div>
+      </div>
+    </section>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <section class="panel alerts">
+          {% for category, message in messages %}
+            <div class="alert {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </section>
+      {% endif %}
+    {% endwith %}
+
+    <section class="layout-grid">
+      <section class="panel form-panel">
+        <div class="panel-head">
+          <h2>New Reel</h2>
+          <p>Hook → points → CTA with TradeVera visuals and burned captions.</p>
+        </div>
+        <form action="{{ url_for('generate') }}" method="post" enctype="multipart/form-data" class="reel-form">
+          <label>
+            <span>Idea</span>
+            <textarea name="idea" rows="3" placeholder="Why most traders fail risk management" required>{{ (form_data.idea if form_data else '') or '' }}</textarea>
+          </label>
+
+          <div class="field-row">
+            <label>
+              <span>Style</span>
+              <input type="text" name="style" value="{{ (form_data.style if form_data else '') or 'tradevera_premium' }}">
+            </label>
+            <label>
+              <span>Length (20-35, optional)</span>
+              <input type="number" name="length" min="20" max="35" value="{{ (form_data.length if form_data else '') or '' }}">
+            </label>
+          </div>
+
+          <label class="upload-field">
+            <span>Optional Images (0-12)</span>
+            <input type="file" name="images" accept=".png,.jpg,.jpeg,.webp" multiple>
+            <small>Upload TradeVera screenshots, charts, logos, or results.</small>
+          </label>
+
+          <label class="checkbox-row">
+            <input type="checkbox" name="no_broll" {% if not form_data or form_data.no_broll %}checked{% endif %}>
+            <span>No b-roll (slides + uploaded images only)</span>
+          </label>
+
+          <button type="submit" class="primary-btn" {% if busy %}disabled{% endif %}>Generate Reel</button>
+        </form>
+
+        <div class="preset-block">
+          <p class="preset-title">Idea presets</p>
+          <div class="preset-chips">
+            <button type="button" class="chip" data-idea="Why most traders fail risk management">Risk management failure</button>
+            <button type="button" class="chip" data-idea="Stop loss mistake that ruins good setups">Stop loss mistake</button>
+            <button type="button" class="chip" data-idea="Why overtrading kills your edge">Overtrading</button>
+            <button type="button" class="chip" data-idea="Revenge trading after a red day">Revenge trading</button>
+            <button type="button" class="chip" data-idea="Win rate vs expectancy: what actually matters">Win rate vs expectancy</button>
+            <button type="button" class="chip" data-idea="How to build a pre-market checklist">Pre-market checklist</button>
+            <button type="button" class="chip" data-idea="How to protect capital during choppy markets">Choppy markets</button>
+            <button type="button" class="chip" data-idea="Breakout entry mistakes most traders make">Breakout mistakes</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="side-stack">
+        {% if current_job %}
+        <section class="panel result-panel">
+          <div class="panel-head">
+            <h2>Latest Result</h2>
+            <p>Job {{ current_job.id }}</p>
+          </div>
+          <div class="result-actions">
+            <a class="primary-btn" href="{{ url_for('output_bundle', job_id=current_job.id) }}">Download Bundle (.zip)</a>
+            {% if 'reel.mp4' in current_job.files %}
+            <a class="secondary-btn" href="{{ url_for('output_file', job_id=current_job.id, filename='reel.mp4', download=1) }}">Download Reel MP4</a>
+            {% endif %}
+          </div>
+          {% if 'thumbnail.png' in current_job.files %}
+            <img class="thumb-preview" src="{{ url_for('output_file', job_id=current_job.id, filename='thumbnail.png') }}" alt="Generated thumbnail preview">
+          {% endif %}
+          <ul class="file-list">
+            {% for name in current_job.files %}
+            <li><a href="{{ url_for('output_file', job_id=current_job.id, filename=name, download=1) }}">{{ name }}</a></li>
+            {% endfor %}
+          </ul>
+          {% if build_log %}
+          <details class="log-details">
+            <summary>build_log.txt</summary>
+            <pre>{{ build_log }}</pre>
+          </details>
+          {% endif %}
+        </section>
+        {% endif %}
+
+        <section class="panel recent-panel">
+          <div class="panel-head">
+            <h2>Recent Outputs</h2>
+            <p>Latest rendered jobs on this instance.</p>
+          </div>
+          {% if recent %}
+            <ul class="recent-list">
+              {% for item in recent %}
+                <li>
+                  <div>
+                    <a href="{{ url_for('job_detail', job_id=item.id) }}">{{ item.id }}</a>
+                    <p>{{ 'reel.mp4 ready' if item.has_reel else 'partial / failed build' }}</p>
+                  </div>
+                  <a class="tiny-link" href="{{ url_for('output_bundle', job_id=item.id) }}">zip</a>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="empty">No outputs yet.</p>
+          {% endif %}
+        </section>
+
+        {% if last_error %}
+        <section class="panel error-log-panel">
+          <div class="panel-head">
+            <h2>Last Error Output</h2>
+            <p>Most recent generator stderr/stdout tail.</p>
+          </div>
+          <pre>{{ last_error }}</pre>
+        </section>
+        {% endif %}
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const chips = document.querySelectorAll('.chip');
+    const ideaBox = document.querySelector('textarea[name="idea"]');
+    chips.forEach((chip) => {
+      chip.addEventListener('click', () => {
+        if (ideaBox) {
+          ideaBox.value = chip.dataset.idea || '';
+          ideaBox.focus();
+        }
+      });
+    });
+  </script>
+</body>
+</html>

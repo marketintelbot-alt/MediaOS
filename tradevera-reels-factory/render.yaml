@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: tradevera-reels-factory
+    runtime: docker
+    rootDir: tradevera-reels-factory
+    healthCheckPath: /healthz
+    autoDeploy: true
