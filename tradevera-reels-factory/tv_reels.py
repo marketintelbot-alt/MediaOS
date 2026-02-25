@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -117,6 +119,10 @@ def main() -> int:
             logger=logger,
         )
         logger.step("Final reel render completed")
+        keep_work = os.environ.get("TV_KEEP_WORK", "").strip().lower() in {"1", "true", "yes", "on"}
+        if not keep_work and work_dir.exists():
+            shutil.rmtree(work_dir, ignore_errors=True)
+            logger.step("Cleaned temporary _work directory (set TV_KEEP_WORK=1 to retain intermediates)")
 
         # Persist a concise production summary into build_log.
         logger.step(f"Output reel: {render_meta['reel'].name}")

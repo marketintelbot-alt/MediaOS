@@ -162,14 +162,20 @@ def _draw_watermark(canvas: Image.Image, logo_path: Path, palette: dict[str, str
     _paste_logo_or_wordmark(canvas, logo_path, palette, VIDEO_W - 300, VIDEO_H - 120, 220, alpha=24)
 
 
-def _lower_third(canvas: Image.Image, palette: dict[str, str], title: str, subtitle: str = "TradeVera") -> None:
+def _lower_third(
+    canvas: Image.Image,
+    palette: dict[str, str],
+    title: str,
+    subtitle: str = "TradeVera",
+    reg_path: str | None = None,
+    bold_path: str | None = None,
+) -> None:
     d = ImageDraw.Draw(canvas)
     box = (72, 116, 760, 260)
     d.rounded_rectangle(box, radius=22, fill=_hex_to_rgba(palette["surface"], 235), outline=_hex_to_rgba(palette["text_secondary"], 56), width=2)
     _add_accent_line(d, box[0] + 24, box[1] + 22, 88, palette)
-    reg, bold = _pick_font_paths(Path("."))
-    title_font = _font(bold, 36)
-    small_font = _font(reg, 22)
+    title_font = _font(bold_path, 36)
+    small_font = _font(reg_path, 22)
     d.text((box[0] + 24, box[1] + 42), title, font=title_font, fill=_hex_to_rgba(palette["text_primary"], 255))
     d.text((box[0] + 24, box[1] + 88), subtitle, font=small_font, fill=_hex_to_rgba(palette["text_secondary"], 255))
 
@@ -213,7 +219,7 @@ def _title_card(canvas: Image.Image, script: dict[str, Any], palette: dict[str, 
     _draw_multiline(d, (110, 410), hook_text, hook_font, _hex_to_rgba(palette["text_primary"], 255), max_width=860, line_gap=12)
     med = _font(reg_path, 30)
     d.text((110, 980), "Edge is process under pressure.", font=med, fill=_hex_to_rgba(palette["text_secondary"], 255))
-    _lower_third(canvas, palette, "Hook", "TradeVera")
+    _lower_third(canvas, palette, "Hook", "TradeVera", reg_path=reg_path, bold_path=bold_path)
     _paste_logo_or_wordmark(canvas, logo_path, palette, 78, 64, 320, alpha=255)
 
 
@@ -233,7 +239,7 @@ def _three_rules(canvas: Image.Image, script: dict[str, Any], palette: dict[str,
         d.text((132, y + 28), f"{i:02d}", font=num_font, fill=_hex_to_rgba(palette["accent"], 255))
         _draw_multiline(d, (220, y + 26), point, txt_font, _hex_to_rgba(palette["text_primary"], 255), max_width=730, line_gap=8)
         y += 210
-    _lower_third(canvas, palette, "Rules", "TradeVera")
+    _lower_third(canvas, palette, "Rules", "TradeVera", reg_path=reg_path, bold_path=bold_path)
 
 
 def _myth_vs_fact(canvas: Image.Image, script: dict[str, Any], palette: dict[str, str], reg_path: str | None, bold_path: str | None) -> None:
@@ -253,7 +259,7 @@ def _myth_vs_fact(canvas: Image.Image, script: dict[str, Any], palette: dict[str
     _draw_multiline(d, (572, 484), fact, _font(reg_path, 36), _hex_to_rgba(palette["text_primary"], 255), 340, 8)
     _draw_multiline(d, (122, 700), "Noise feels productive.", _font(reg_path, 34), _hex_to_rgba(palette["text_secondary"], 255), 360, 8)
     _draw_multiline(d, (572, 700), "Process beats urgency under pressure.", _font(reg_path, 34), _hex_to_rgba(palette["text_secondary"], 255), 340, 8)
-    _lower_third(canvas, palette, "Myth vs Fact", "TradeVera")
+    _lower_third(canvas, palette, "Myth vs Fact", "TradeVera", reg_path=reg_path, bold_path=bold_path)
 
 
 def _do_this_not_that(canvas: Image.Image, palette: dict[str, str], reg_path: str | None, bold_path: str | None) -> None:
@@ -333,7 +339,7 @@ def _checklist(canvas: Image.Image, script: dict[str, Any], palette: dict[str, s
             d.line((158, y + 69, 176, y + 43), fill=_hex_to_rgba(palette["accent"], 255), width=3)
         _draw_multiline(d, (206, y + 28), str(item), _font(reg_path, 34), _hex_to_rgba(palette["text_primary"], 255), 730, 8)
         y += 144
-    _lower_third(canvas, palette, "CTA", "TradeVera")
+    _lower_third(canvas, palette, "CTA", "TradeVera", reg_path=reg_path, bold_path=bold_path)
 
 
 def _setup_vs_noise(canvas: Image.Image, palette: dict[str, str], reg_path: str | None, bold_path: str | None) -> None:
@@ -360,7 +366,7 @@ def _risk_formula(canvas: Image.Image, palette: dict[str, str], reg_path: str | 
     d.text((146, 650), "Risk = Size × Stop", font=formula_font, fill=_hex_to_rgba(palette["text_primary"], 255))
     _add_accent_line(d, 146, 742, 280, palette)
     d.text((146, 780), "Adjust size first. Keep stop logic intact.", font=_font(reg_path, 30), fill=_hex_to_rgba(palette["text_secondary"], 255))
-    _lower_third(canvas, palette, "Formula", "TradeVera")
+    _lower_third(canvas, palette, "Formula", "TradeVera", reg_path=reg_path, bold_path=bold_path)
 
 
 def generate_tradevera_slides(output_dir: Path, script: dict[str, Any], project_root: Path, logger: Any = None) -> dict[str, Path]:

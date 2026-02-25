@@ -9,12 +9,13 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, Response, flash, redirect, render_template, request, send_file, send_from_directory, url_for
+from flask import Flask, Response, flash, jsonify, redirect, render_template, request, send_file, send_from_directory, url_for
 from werkzeug.utils import secure_filename
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -24,12 +25,19 @@ TV_REELS = PROJECT_ROOT / "tv_reels.py"
 
 ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 RESULT_FILES = ["reel.mp4", "thumbnail.png", "caption.txt", "hooks.txt", "script.json", "build_log.txt"]
+MAX_WEB_BUILD_TIMEOUT = int(os.environ.get("TV_WEB_BUILD_TIMEOUT_SECONDS", "1200"))
+REQUEST_COOLDOWN_SECONDS = int(os.environ.get("TV_WEB_REQUEST_COOLDOWN_SECONDS", "8"))
+OUTPUT_RETENTION_COUNT = int(os.environ.get("TV_OUTPUT_RETENTION_COUNT", "25"))
+OUTPUT_RETENTION_HOURS = int(os.environ.get("TV_OUTPUT_RETENTION_HOURS", "168"))
+MAX_ERROR_LOG_CHARS = int(os.environ.get("TV_WEB_ERROR_LOG_CHARS", "12000"))
 
 app = Flask(__name__, template_folder=str(PROJECT_ROOT / "web" / "templates"), static_folder=str(PROJECT_ROOT / "web" / "static"))
 app.secret_key = os.environ.get("TV_WEB_SECRET", "tradevera-local-secret")
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024  # 64MB total upload payload
 
 _BUILD_LOCK = threading.Lock()
+_REQUEST_STATE_LOCK = threading.Lock()
+_LAST_REQUEST_TS_BY_IP: dict[str, float] = {}
 
 
 @dataclass
@@ -67,7 +75,85 @@ def _save_uploaded_images(files: list[Any]) -> list[Path]:
         f.save(out)
         if out.exists() and out.stat().st_size > 0:
             saved.append(out)
+    if not saved:
+        shutil.rmtree(upload_batch, ignore_errors=True)
     return saved
+
+
+def _client_ip() -> str:
+    forwarded = request.headers.get("X-Forwarded-For", "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return (request.remote_addr or "unknown").strip() or "unknown"
+
+
+def _check_request_rate_limit() -> tuple[bool, int]:
+    now = time.time()
+    ip = _client_ip()
+    with _REQUEST_STATE_LOCK:
+        # cleanup stale entries to keep memory bounded
+        stale_before = now - 3600
+        for key, ts in list(_LAST_REQUEST_TS_BY_IP.items()):
+            if ts < stale_before:
+                _LAST_REQUEST_TS_BY_IP.pop(key, None)
+        last = _LAST_REQUEST_TS_BY_IP.get(ip)
+        if last is not None and REQUEST_COOLDOWN_SECONDS > 0:
+            delta = now - last
+            if delta < REQUEST_COOLDOWN_SECONDS:
+                return False, int(round(REQUEST_COOLDOWN_SECONDS - delta))
+        _LAST_REQUEST_TS_BY_IP[ip] = now
+    return True, 0
+
+
+def _which_bin(name: str) -> str | None:
+    # Keep local checks lightweight and in sync with project utils behavior.
+    if name in {"ffmpeg", "ffprobe"}:
+        for p in (Path("/opt/homebrew/opt/ffmpeg-full/bin") / name, Path("/usr/local/opt/ffmpeg-full/bin") / name):
+            if p.exists():
+                return str(p)
+    return shutil.which(name)
+
+
+def _runtime_health() -> dict[str, Any]:
+    ffmpeg = _which_bin("ffmpeg")
+    ffprobe = _which_bin("ffprobe")
+    tts = _which_bin("piper") or _which_bin("espeak-ng") or _which_bin("espeak")
+    OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    writable = os.access(OUTPUTS_DIR, os.W_OK) and os.access(UPLOADS_DIR, os.W_OK)
+    ok = bool(ffmpeg and ffprobe and tts and writable and TV_REELS.exists())
+    return {
+        "ok": ok,
+        "ffmpeg": bool(ffmpeg),
+        "ffprobe": bool(ffprobe),
+        "tts": bool(tts),
+        "writable": writable,
+        "generator_script": TV_REELS.exists(),
+        "busy": _BUILD_LOCK.locked(),
+    }
+
+
+def _cleanup_outputs() -> dict[str, int]:
+    removed = 0
+    scanned = 0
+    if not OUTPUTS_DIR.exists():
+        return {"scanned": 0, "removed": 0}
+    dirs = [d for d in OUTPUTS_DIR.iterdir() if d.is_dir()]
+    dirs_sorted = sorted(dirs, key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
+    now = time.time()
+    max_age_seconds = max(1, OUTPUT_RETENTION_HOURS) * 3600
+    keep = max(1, OUTPUT_RETENTION_COUNT)
+    for idx, d in enumerate(dirs_sorted):
+        scanned += 1
+        try:
+            age = now - d.stat().st_mtime
+        except FileNotFoundError:
+            continue
+        should_remove = idx >= keep or age > max_age_seconds
+        if should_remove:
+            shutil.rmtree(d, ignore_errors=True)
+            removed += 1
+    return {"scanned": scanned, "removed": removed}
 
 
 def _run_generator(idea: str, length: str | None, style: str | None, no_broll: bool, image_paths: list[Path]) -> BuildResult:
@@ -87,6 +173,7 @@ def _run_generator(idea: str, length: str | None, style: str | None, no_broll: b
     extra_bin = "/opt/homebrew/opt/ffmpeg-full/bin"
     if Path(extra_bin).exists():
         env["PATH"] = extra_bin + os.pathsep + env.get("PATH", "")
+    env.setdefault("TV_KEEP_WORK", "0")
 
     try:
         cp = subprocess.run(
@@ -95,7 +182,7 @@ def _run_generator(idea: str, length: str | None, style: str | None, no_broll: b
             text=True,
             capture_output=True,
             env=env,
-            timeout=60 * 20,
+            timeout=MAX_WEB_BUILD_TIMEOUT,
         )
     except subprocess.TimeoutExpired as exc:
         return BuildResult(False, None, exc.stdout or "", exc.stderr or "", "Build timed out")
@@ -154,8 +241,9 @@ def _zip_output_dir(job_dir: Path) -> bytes:
 
 
 @app.get("/healthz")
-def healthz() -> tuple[str, int]:
-    return "ok", 200
+def healthz() -> tuple[Response, int]:
+    status = _runtime_health()
+    return jsonify(status), (200 if status["ok"] else 503)
 
 
 @app.get("/")
@@ -178,7 +266,15 @@ def generate() -> Response:
         flash("Length must be blank or a number between 20 and 35.", "error")
         return redirect(url_for("index"))
 
+    allowed, wait_s = _check_request_rate_limit()
+    if not allowed:
+        flash(f"Please wait {wait_s}s before starting another build from this IP.", "error")
+        return redirect(url_for("index"))
+
     images = _save_uploaded_images(request.files.getlist("images"))
+    if request.files.getlist("images") and not images:
+        flash("No valid images were uploaded. Supported formats: PNG, JPG, JPEG, WEBP.", "error")
+        return redirect(url_for("index"))
 
     acquired = _BUILD_LOCK.acquire(blocking=False)
     if not acquired:
@@ -186,6 +282,7 @@ def generate() -> Response:
         return redirect(url_for("index"))
 
     try:
+        _cleanup_outputs()
         result = _run_generator(idea, length, style, no_broll, images)
     finally:
         _BUILD_LOCK.release()
@@ -195,6 +292,7 @@ def generate() -> Response:
             shutil.rmtree(batch_dir, ignore_errors=True)
 
     if result.ok and result.output_dir:
+        _cleanup_outputs()
         job_id = result.output_dir.name
         return redirect(url_for("job_detail", job_id=job_id), code=303)
 
@@ -204,7 +302,7 @@ def generate() -> Response:
         "index.html",
         recent=_list_recent_outputs(),
         busy=_BUILD_LOCK.locked(),
-        last_error=debug_log[-12000:] if debug_log else None,
+        last_error=debug_log[-MAX_ERROR_LOG_CHARS:] if debug_log else None,
         form_data={
             "idea": idea,
             "style": style,

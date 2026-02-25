@@ -161,8 +161,15 @@ Use **New Web Service** in Render (not New Static Site), then set:
 Optional env vars:
 - `TV_WEB_SECRET` = any random string (recommended)
 - `PIPER_MODEL` = path inside the container only if you later customize Piper (default hosted fallback is eSpeak)
+- `TV_OUTPUT_RETENTION_COUNT` = number of recent jobs to keep on disk (default `25`)
+- `TV_OUTPUT_RETENTION_HOURS` = maximum job age in hours before cleanup (default `168`)
 
 After deploy, open the site URL and use the browser form to generate reels.
+
+Operational safety notes:
+- The hosted UI enforces a single-build queue, upload size limits, and a short IP cooldown between builds.
+- Successful builds clean temporary intermediates (`_work`) by default to reduce disk usage.
+- `/healthz` checks runtime dependencies (`ffmpeg`, `ffprobe`, local TTS engine) and write access.
 
 ## CLI Reference
 - `--idea "text"` (required)

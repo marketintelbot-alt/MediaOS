@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib
 import platform
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -16,6 +17,23 @@ def check_bin(name: str) -> bool:
             if p.exists():
                 return True
     return shutil.which(name) is not None
+
+
+def ffmpeg_caption_filters_ok() -> bool | None:
+    ffmpeg = None
+    for candidate in ("ffmpeg",):
+        if check_bin(candidate):
+            ffmpeg = shutil.which(candidate)
+            break
+    for p in (Path("/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg"), Path("/usr/local/opt/ffmpeg-full/bin/ffmpeg")):
+        if p.exists():
+            ffmpeg = str(p)
+            break
+    if not ffmpeg:
+        return None
+    cp = subprocess.run([ffmpeg, "-hide_banner", "-filters"], text=True, capture_output=True)
+    text = (cp.stdout or "") + "\n" + (cp.stderr or "")
+    return (" subtitles " in text) or (" drawtext " in text)
 
 
 def main() -> int:
@@ -47,6 +65,11 @@ def main() -> int:
 
     for name, ok in checks:
         print(f"[{ 'OK' if ok else 'MISSING' }] {name}")
+    caption_filters = ffmpeg_caption_filters_ok()
+    if caption_filters is True:
+        print("[OK] FFmpeg caption burn filters (subtitles/drawtext)")
+    elif caption_filters is False:
+        print("[WARN] FFmpeg caption burn filters missing (install ffmpeg-full or build FFmpeg with libass/freetype)")
 
     print("")
     print("Actionable fixes:")
