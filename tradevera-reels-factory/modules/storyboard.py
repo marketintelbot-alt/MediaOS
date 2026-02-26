@@ -70,7 +70,13 @@ def build_storyboard(
         base_durations[-1] = 1.75  # CTA emphasis
     durations = _normalize_durations(base_durations, float(target_length))
 
-    slides_cycle = [slide_paths[k] for k in SLIDE_SEQUENCE_KEYS if k in slide_paths]
+    slides_cycle = [
+        slide_paths[k]
+        for k in SLIDE_SEQUENCE_KEYS
+        if k in slide_paths and k not in {"title_card", "checklist"}
+    ]
+    if not slides_cycle:
+        slides_cycle = [slide_paths[k] for k in SLIDE_SEQUENCE_KEYS if k in slide_paths]
     if not slides_cycle:
         raise RuntimeError("No generated slides available for storyboard")
 
@@ -80,7 +86,7 @@ def build_storyboard(
     image_index = 0
     video_index = 0
     image_paths = list(user_images)
-    video_paths = [Path(c["path"]) for c in broll_clips] if (not no_broll and broll_clips) else []
+    video_items = list(broll_clips) if (not no_broll and broll_clips) else []
     visual_plan_templates = [
         str(item.get("template"))
         for item in (script.get("visual_plan") or [])
@@ -134,8 +140,8 @@ def build_storyboard(
         else:
             # Weighted selection with anti-repeat logic to reduce robotic slide runs.
             can_image = bool(image_paths) and image_run < 2
-            can_video = bool(video_paths) and video_run < 2
-            can_slide = slide_run < (3 if (image_paths or video_paths) else 6)
+            can_video = bool(video_items) and video_run < 2
+            can_slide = slide_run < (3 if (image_paths or video_items) else 6)
             phase = idx / max(1, len(durations) - 1)
             image_weight = 0.20 if can_image else 0.0
             video_weight = 0.36 if can_video else 0.0
@@ -167,13 +173,15 @@ def build_storyboard(
                         path = image_paths[image_index % len(image_paths)]
                         attempts += 1
                     image_index += 1
-                elif roll < image_weight + video_weight and video_paths:
+                elif roll < image_weight + video_weight and video_items:
                     kind = "video"
                     attempts = 0
-                    path = video_paths[video_index % len(video_paths)]
-                    while str(path) == last_path and attempts < len(video_paths):
+                    item = video_items[video_index % len(video_items)]
+                    path = Path(item["path"])
+                    while str(path) == last_path and attempts < len(video_items):
                         video_index += 1
-                        path = video_paths[video_index % len(video_paths)]
+                        item = video_items[video_index % len(video_items)]
+                        path = Path(item["path"])
                         attempts += 1
                     video_index += 1
                 else:
@@ -182,15 +190,25 @@ def build_storyboard(
         zoom = round(rnd.uniform(1.02, 1.08), 3) if kind in {"slide", "image"} else 1.0
         if idx in anchor_map and kind == "slide":
             zoom = round(rnd.uniform(1.01, 1.05), 3)
-        segments.append(
-            {
-                "index": idx,
-                "kind": kind,
-                "path": str(path),
-                "duration": round(float(dur), 2),
-                "zoom": zoom,
-            }
-        )
+        seg = {
+            "index": idx,
+            "kind": kind,
+            "path": str(path),
+            "duration": round(float(dur), 2),
+            "zoom": zoom,
+        }
+        if kind == "video":
+            # Randomize source offsets so repeated b-roll clips do not always start from frame 0.
+            clip_meta = next((c for c in video_items if str(Path(c.get("path", ""))) == str(path)), None)
+            clip_dur = 0.0
+            try:
+                clip_dur = float((clip_meta or {}).get("duration") or 0.0)
+            except Exception:
+                clip_dur = 0.0
+            max_start = max(0.0, clip_dur - float(dur) - 0.08)
+            if max_start > 0.25:
+                seg["trim_start"] = round(rnd.uniform(0.0, max_start), 3)
+        segments.append(seg)
         total += float(dur)
         if kind == last_kind:
             kind_run += 1

@@ -219,23 +219,65 @@ def ensure_brand_assets(project_root: Path, logger: Any = None) -> dict[str, Any
 
 def _title_card(canvas: Image.Image, script: dict[str, Any], palette: dict[str, str], logo_path: Path, reg_path: str | None, bold_path: str | None) -> None:
     d = ImageDraw.Draw(canvas)
-    d.rounded_rectangle((68, 236, 1012, 1138), radius=34, fill=_hex_to_rgba(palette["surface"], 235), outline=_hex_to_rgba(palette["text_secondary"], 44), width=2)
-    _add_accent_line(d, 110, 306, 168, palette)
-    small = _font(reg_path, 26)
-    d.text((110, 330), "TRADEVERA // EXECUTION NOTE", font=small, fill=_hex_to_rgba(palette["text_secondary"], 255))
-    hook_text = str(script.get("hook", "TradeVera execution edge"))
-    hook_font = _font(bold_path, 84)
+    main_box = (68, 248, 1012, 1338)
+    d.rounded_rectangle(main_box, radius=34, fill=_hex_to_rgba(palette["surface"], 238), outline=_hex_to_rgba(palette["text_secondary"], 46), width=2)
+    d.rounded_rectangle((96, 286, 422, 362), radius=16, fill=_hex_to_rgba(palette["background"], 150), outline=_hex_to_rgba(palette["text_secondary"], 38), width=2)
+    _add_accent_line(d, 116, 308, 110, palette)
+    small = _font(reg_path, 22)
+    d.text((116, 326), "TRADEVERA // HOOK", font=small, fill=_hex_to_rgba(palette["text_secondary"], 255))
+
+    hook_text = str(script.get("hook_display") or script.get("idea") or "TradeVera execution edge")
+    hook_font = _font(bold_path, 86)
     for size in (84, 76, 68, 60):
         candidate = _font(bold_path, size)
-        if len(_fit_lines(d, hook_text, candidate, 860)) <= 5:
+        if len([ln for ln in _fit_lines(d, hook_text, candidate, 820) if ln.strip()]) <= 4:
             hook_font = candidate
             break
         hook_font = candidate
-    hook_end_y = _draw_multiline(d, (110, 410), hook_text, hook_font, _hex_to_rgba(palette["text_primary"], 255), max_width=860, line_gap=12)
-    med = _font(reg_path, 30)
-    sub_y = min(1030, max(930, hook_end_y + 42))
-    d.text((110, sub_y), "Edge is process under pressure.", font=med, fill=_hex_to_rgba(palette["text_secondary"], 255))
-    _lower_third(canvas, palette, "Hook", "TradeVera", reg_path=reg_path, bold_path=bold_path)
+    hook_end_y = _draw_multiline(d, (110, 414), hook_text, hook_font, _hex_to_rgba(palette["text_primary"], 255), max_width=820, line_gap=12)
+
+    # Right-side terminal widget fills space and reinforces premium "terminal" aesthetic.
+    widget = (748, 388, 972, 826)
+    d.rounded_rectangle(widget, radius=22, fill=_hex_to_rgba(palette["background"], 132), outline=_hex_to_rgba(palette["text_secondary"], 34), width=2)
+    d.text((772, 418), "EXECUTION", font=_font(bold_path, 22), fill=_hex_to_rgba(palette["text_secondary"], 255))
+    d.rounded_rectangle((772, 470, 948, 520), radius=12, fill=_hex_to_rgba(palette["surface"], 210))
+    d.text((788, 483), "RISK MAP", font=_font(bold_path, 18), fill=_hex_to_rgba(palette["accent"], 255))
+    d.rounded_rectangle((772, 540, 948, 780), radius=14, fill=_hex_to_rgba(palette["surface"], 185), outline=_hex_to_rgba(palette["text_secondary"], 28), width=1)
+    for i in range(5):
+        y = 572 + i * 38
+        d.line((790, y, 930, y), fill=_hex_to_rgba(palette["text_secondary"], 22), width=1)
+    pts = [(790, 724), (826, 700), (856, 706), (892, 664), (930, 632)]
+    for i in range(len(pts) - 1):
+        d.line((pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]), fill=_hex_to_rgba(palette["accent"], 230), width=4)
+    for x, y in pts:
+        d.ellipse((x - 4, y - 4, x + 4, y + 4), fill=_hex_to_rgba(palette["text_primary"], 255))
+
+    detail_box = (96, max(860, hook_end_y + 34), 972, 1250)
+    d.rounded_rectangle(detail_box, radius=24, fill=_hex_to_rgba(palette["background"], 122), outline=_hex_to_rgba(palette["text_secondary"], 34), width=2)
+    d.text((122, detail_box[1] + 32), "EXECUTION NOTE", font=_font(bold_path, 24), fill=_hex_to_rgba(palette["accent"], 255))
+    support = str((script.get("points") or ["Edge is process under pressure."])[0])
+    _draw_multiline(
+        d,
+        (122, detail_box[1] + 82),
+        support,
+        _font(reg_path, 32),
+        _hex_to_rgba(palette["text_primary"], 255),
+        max_width=810,
+        line_gap=10,
+    )
+    med = _font(reg_path, 28)
+    d.text((122, detail_box[3] - 72), "Edge is process under pressure.", font=med, fill=_hex_to_rgba(palette["text_secondary"], 255))
+
+    chip_y = 1466
+    chips = [("RISK", "DEFINED"), ("ENTRY", "PLANNED"), ("EXECUTION", "CLEAN")]
+    x = 96
+    for label, value in chips:
+        w = 278 if label != "EXECUTION" else 320
+        d.rounded_rectangle((x, chip_y, x + w, chip_y + 92), radius=18, fill=_hex_to_rgba(palette["surface"], 220), outline=_hex_to_rgba(palette["text_secondary"], 34), width=2)
+        d.text((x + 18, chip_y + 18), label, font=_font(reg_path, 18), fill=_hex_to_rgba(palette["text_secondary"], 255))
+        d.text((x + 18, chip_y + 44), value, font=_font(bold_path, 24), fill=_hex_to_rgba(palette["text_primary"], 255))
+        x += w + 14
+
     _paste_logo_or_wordmark(canvas, logo_path, palette, 78, 64, 320, alpha=255)
 
 

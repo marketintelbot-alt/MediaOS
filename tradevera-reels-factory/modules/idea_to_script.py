@@ -226,6 +226,18 @@ def _hook_variants(idea: str) -> list[str]:
     return out
 
 
+def _display_hook(idea: str) -> str:
+    s = (idea or "").strip().rstrip(".?!")
+    s = re.sub(r"^\s*tradevera\s+breakdown:\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bwhat actually matters\b", "what matters", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s+", " ", s).strip()
+    words = s.split()
+    if len(words) > 8:
+        s = " ".join(words[:8])
+    # Prefer cleaner on-screen copy over full narration hook.
+    return sanitize_title(s, 64)
+
+
 
 def generate_script(idea: str, target_length: int, style: str = "tradevera_premium") -> dict[str, Any]:
     idea = _normalize_idea(idea)
@@ -266,6 +278,7 @@ def generate_script(idea: str, target_length: int, style: str = "tradevera_premi
 
     return {
         "hook": hook,
+        "hook_display": _display_hook(idea),
         "points": points,
         "cta": cta,
         "visual_plan": visual_plan,

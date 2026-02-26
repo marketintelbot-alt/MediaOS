@@ -42,7 +42,10 @@ def _image_segment_filter(duration: float, zoom: float) -> str:
 def _video_segment_filter() -> str:
     return (
         f"fps={FPS},scale={VIDEO_W}:{VIDEO_H}:force_original_aspect_ratio=increase,"
-        f"crop={VIDEO_W}:{VIDEO_H},eq=contrast=1.03:brightness=0.0:saturation=0.92,format=yuv420p"
+        f"crop={VIDEO_W}:{VIDEO_H},"
+        "eq=contrast=1.05:brightness=-0.005:saturation=0.90,"
+        "unsharp=5:5:0.35:3:3:0.0,"
+        "format=yuv420p"
     )
 
 
@@ -55,6 +58,7 @@ def _render_segment(segment: dict[str, Any], seg_out: Path, logger: Any = None) 
     dur = float(segment["duration"])
     kind = segment["kind"]
     zoom = float(segment.get("zoom") or 1.03)
+    trim_start = max(0.0, float(segment.get("trim_start") or 0.0))
 
     if kind in {"slide", "image"}:
         cmd = [
@@ -89,6 +93,10 @@ def _render_segment(segment: dict[str, Any], seg_out: Path, logger: Any = None) 
             "-1",
             "-i",
             str(path),
+        ]
+        if trim_start > 0.0:
+            cmd += ["-ss", f"{trim_start:.3f}"]
+        cmd += [
             "-t",
             f"{dur:.3f}",
             "-vf",

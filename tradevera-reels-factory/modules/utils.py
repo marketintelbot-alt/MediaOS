@@ -118,6 +118,22 @@ def which_any(*names: str) -> str | None:
                 candidate = Path(alt) / name
                 if candidate.exists():
                     return str(candidate)
+        home = Path.home()
+        # Common Python user-script locations (macOS/Linux) where tools like `piper` may land.
+        for base in (
+            home / ".local" / "bin",
+            home / "Library" / "Python",
+        ):
+            if base.is_dir():
+                if base.name == "Python":
+                    for py_ver in sorted(base.iterdir(), reverse=True):
+                        candidate = py_ver / "bin" / name
+                        if candidate.exists():
+                            return str(candidate)
+                else:
+                    candidate = base / name
+                    if candidate.exists():
+                        return str(candidate)
         path = shutil.which(name)
         if path:
             return path

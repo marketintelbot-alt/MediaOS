@@ -4,3 +4,8 @@ outputs/
 inputs/web_uploads/
 .run/
 .DS_Store
+assets/tts/
+assets/broll/
+assets/music/
+assets/sfx/
+assets/ATTRIBUTION.txt
