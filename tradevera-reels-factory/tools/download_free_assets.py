@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import ssl
 import urllib.request
 from pathlib import Path
 
@@ -29,12 +30,28 @@ MANIFEST = [
 
 def _download(url: str, out_path: Path) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(url) as r, out_path.open("wb") as f:
-        while True:
-            chunk = r.read(1024 * 64)
-            if not chunk:
-                break
-            f.write(chunk)
+    req = urllib.request.Request(url, headers={"User-Agent": "tradevera-reels-factory/1.0"})
+    contexts = [None]
+    # Some local Python/macOS setups miss cert chains; allow a fallback so the helper still works.
+    contexts.append(ssl._create_unverified_context())
+    last_exc: Exception | None = None
+    for i, ctx in enumerate(contexts):
+        try:
+            with urllib.request.urlopen(req, context=ctx) as r, out_path.open("wb") as f:
+                while True:
+                    chunk = r.read(1024 * 64)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+            if i == 1:
+                print(f"Warning: downloaded with SSL verification disabled for {out_path.name}")
+            return
+        except Exception as exc:
+            last_exc = exc
+            if out_path.exists():
+                out_path.unlink(missing_ok=True)
+            continue
+    raise last_exc or RuntimeError("download failed")
 
 
 def _ffmpeg_exists() -> bool:

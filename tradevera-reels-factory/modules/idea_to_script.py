@@ -249,7 +249,8 @@ def generate_script(idea: str, target_length: int, style: str = "tradevera_premi
     bridge = bridge_options[rnd.randrange(len(bridge_options))]
 
     narration_parts = [hook, *points, bridge, cta]
-    narration = " ".join(narration_parts)
+    caption_narration = " ".join(narration_parts)
+    narration = caption_narration
     # Micro-pauses for a calmer finance narrator pace.
     narration = narration.replace(": ", ": ... ")
     narration = narration.replace(". ", ". ... ")
@@ -269,6 +270,7 @@ def generate_script(idea: str, target_length: int, style: str = "tradevera_premi
         "cta": cta,
         "visual_plan": visual_plan,
         "narration": narration,
+        "caption_narration": caption_narration,
         "style": style,
         "idea": idea,
         "target_length": target_length,

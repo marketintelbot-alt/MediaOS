@@ -61,21 +61,27 @@ def _font(path: str | None, size: int) -> ImageFont.FreeTypeFont | ImageFont.Ima
 
 
 def _fit_lines(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_width: int) -> list[str]:
-    words = text.split()
-    if not words:
-        return [""]
-    lines: list[str] = []
-    cur = words[0]
-    for w in words[1:]:
-        test = f"{cur} {w}"
-        bbox = draw.textbbox((0, 0), test, font=font)
-        if bbox[2] - bbox[0] <= max_width:
-            cur = test
-        else:
-            lines.append(cur)
-            cur = w
-    lines.append(cur)
-    return lines
+    text = text or ""
+    paragraphs = text.splitlines() or [text]
+    all_lines: list[str] = []
+    for p_idx, paragraph in enumerate(paragraphs):
+        words = paragraph.split()
+        if not words:
+            all_lines.append("")
+            continue
+        cur = words[0]
+        for w in words[1:]:
+            test = f"{cur} {w}"
+            bbox = draw.textbbox((0, 0), test, font=font)
+            if bbox[2] - bbox[0] <= max_width:
+                cur = test
+            else:
+                all_lines.append(cur)
+                cur = w
+        all_lines.append(cur)
+        if p_idx != len(paragraphs) - 1 and paragraph.strip():
+            all_lines.append("")
+    return all_lines or [""]
 
 
 def _draw_multiline(
@@ -91,6 +97,9 @@ def _draw_multiline(
     lines = _fit_lines(draw, text, font, max_width)
     cur_y = y
     for line in lines:
+        if line == "":
+            cur_y += int(font.size * 0.55) if hasattr(font, "size") else 18
+            continue
         draw.text((x, cur_y), line, font=font, fill=fill)
         bbox = draw.textbbox((x, cur_y), line, font=font)
         cur_y = bbox[3] + line_gap
@@ -214,11 +223,18 @@ def _title_card(canvas: Image.Image, script: dict[str, Any], palette: dict[str, 
     _add_accent_line(d, 110, 306, 168, palette)
     small = _font(reg_path, 26)
     d.text((110, 330), "TRADEVERA // EXECUTION NOTE", font=small, fill=_hex_to_rgba(palette["text_secondary"], 255))
-    hook_font = _font(bold_path, 84)
     hook_text = str(script.get("hook", "TradeVera execution edge"))
-    _draw_multiline(d, (110, 410), hook_text, hook_font, _hex_to_rgba(palette["text_primary"], 255), max_width=860, line_gap=12)
+    hook_font = _font(bold_path, 84)
+    for size in (84, 76, 68, 60):
+        candidate = _font(bold_path, size)
+        if len(_fit_lines(d, hook_text, candidate, 860)) <= 5:
+            hook_font = candidate
+            break
+        hook_font = candidate
+    hook_end_y = _draw_multiline(d, (110, 410), hook_text, hook_font, _hex_to_rgba(palette["text_primary"], 255), max_width=860, line_gap=12)
     med = _font(reg_path, 30)
-    d.text((110, 980), "Edge is process under pressure.", font=med, fill=_hex_to_rgba(palette["text_secondary"], 255))
+    sub_y = min(1030, max(930, hook_end_y + 42))
+    d.text((110, sub_y), "Edge is process under pressure.", font=med, fill=_hex_to_rgba(palette["text_secondary"], 255))
     _lower_third(canvas, palette, "Hook", "TradeVera", reg_path=reg_path, bold_path=bold_path)
     _paste_logo_or_wordmark(canvas, logo_path, palette, 78, 64, 320, alpha=255)
 

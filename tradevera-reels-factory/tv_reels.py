@@ -95,7 +95,8 @@ def main() -> int:
         logger.step(f"Voiceover generated ({tts_meta['engine']})")
 
         captions_ass = captions_dir / "captions.ass"
-        caption_meta = generate_ass_captions(script["narration"], voice_wav, captions_ass, palette, logger=logger)
+        caption_source = script.get("caption_narration", script["narration"])
+        caption_meta = generate_ass_captions(caption_source, voice_wav, captions_ass, palette, logger=logger)
         logger.step(f"Caption mode: {caption_meta['mode']}")
 
         mixed_audio = audio_dir / "mixed.wav"

@@ -13,8 +13,25 @@ from .utils import ass_color, media_duration, pick_keywords, seconds_to_ass, spl
 def _sanitize_ass_text(text: str) -> str:
     text = text.replace("{", "(").replace("}", ")")
     text = text.replace("\n", " ")
+    text = text.replace("...", " ")
+    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+def _clean_caption_source_text(text: str) -> str:
+    text = text or ""
+    text = text.replace("...", " ")
+    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _is_caption_worthy(text: str) -> bool:
+    s = _sanitize_ass_text(text)
+    if not s:
+        return False
+    return bool(re.search(r"[A-Za-z0-9]", s))
 
 
 def _highlight_keywords(text: str, accent_hex: str, base_hex: str) -> str:
@@ -32,9 +49,17 @@ def _highlight_keywords(text: str, accent_hex: str, base_hex: str) -> str:
 
 
 def _chunks_from_phrase_fallback(narration_text: str, audio_dur: float) -> list[dict[str, Any]]:
-    pieces = split_caption_chunks(narration_text, max_words=7)
+    pieces = [p for p in split_caption_chunks(_clean_caption_source_text(narration_text), max_words=7) if _is_caption_worthy(p)]
     if not pieces:
         return []
+    merged: list[str] = []
+    for piece in pieces:
+        # Avoid one-word orphan fragments that look cheap on screen.
+        if merged and len(piece.split()) <= 2 and len(merged[-1].split()) <= 5:
+            merged[-1] = f"{merged[-1]} {piece}".strip()
+        else:
+            merged.append(piece)
+    pieces = merged
     weights = [max(1, len(p.split())) for p in pieces]
     total_w = sum(weights) or 1
     cur = 0.0
@@ -43,7 +68,7 @@ def _chunks_from_phrase_fallback(narration_text: str, audio_dur: float) -> list[
     usable = max(0.5, audio_dur - 0.1)
     for i, piece in enumerate(pieces):
         dur = usable * (weights[i] / total_w)
-        dur = max(0.38, dur)
+        dur = max(0.42, dur)
         start = cur
         end = min(audio_dur, start + dur)
         out.append({"start": round(start, 3), "end": round(end, 3), "text": piece})
@@ -83,28 +108,30 @@ def _chunks_from_whisper(voice_wav: Path, logger: Any = None) -> list[dict[str, 
 
         chunks: list[dict[str, Any]] = []
         bucket: list[dict[str, Any]] = []
-        for item in raw_words:
-            if bucket and (
-                len(bucket) >= 7 or item["start"] - bucket[-1]["end"] > 0.32 or item["text"].endswith((".", "!", "?", ";"))
-            ):
+
+        def flush_bucket() -> None:
+            nonlocal bucket
+            if not bucket:
+                return
+            text = " ".join(w["text"] for w in bucket).strip()
+            if _is_caption_worthy(text):
                 chunks.append(
                     {
                         "start": bucket[0]["start"],
                         "end": max(bucket[-1]["end"], bucket[0]["start"] + 0.25),
-                        "text": " ".join(w["text"] for w in bucket).strip(),
+                        "text": text,
                     }
                 )
-                bucket = []
+            bucket = []
+
+        for item in raw_words:
+            if bucket and (len(bucket) >= 7 or item["start"] - bucket[-1]["end"] > 0.32):
+                flush_bucket()
             bucket.append(item)
-        if bucket:
-            chunks.append(
-                {
-                    "start": bucket[0]["start"],
-                    "end": max(bucket[-1]["end"], bucket[0]["start"] + 0.25),
-                    "text": " ".join(w["text"] for w in bucket).strip(),
-                }
-            )
-        return chunks
+            if bucket[-1]["text"].endswith((".", "!", "?", ";", ":")):
+                flush_bucket()
+        flush_bucket()
+        return chunks or None
     except Exception as exc:
         if logger:
             logger.warn(f"Whisper caption timing unavailable, using phrase fallback ({exc.__class__.__name__})")
@@ -114,8 +141,8 @@ def _chunks_from_whisper(voice_wav: Path, logger: Any = None) -> list[dict[str, 
 def _ass_header(palette: dict[str, str]) -> str:
     primary = ass_color(palette["text_primary"])
     secondary = ass_color(palette["text_secondary"])
-    back = "&H14000000&"
-    outline = "&H00101010&"
+    back = "&H28000000&"
+    outline = "&H000D1018&"
     return "\n".join(
         [
             "[Script Info]",
@@ -128,7 +155,7 @@ def _ass_header(palette: dict[str, str]) -> str:
             "",
             "[V4+ Styles]",
             "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
-            f"Style: TVCaption,Arial,58,{primary},{secondary},{outline},{back},1,0,0,0,100,100,0,0,1,3,1,2,72,72,250,1",
+            f"Style: TVCaption,Arial,56,{primary},{secondary},{outline},{back},1,0,0,0,100,100,0,0,1,2.8,0.8,2,76,76,268,1",
             "",
             "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
@@ -159,8 +186,8 @@ def generate_ass_captions(
         if not text:
             continue
         styled = _highlight_keywords(text, palette["accent"], palette["text_primary"])
-        # subtle pop animation and static bottom-center position within safe area
-        prefix = r"{\an2\pos(540,1590)\bord3\shad1\fsp0\t(0,120,\fscx104\fscy104)}"
+        # Subtle pop + fade (clean finance style, not bouncy/cartoonish).
+        prefix = r"{\an2\pos(540,1580)\fscx96\fscy96\bord3\shad1\fsp0\fad(12,28)\t(0,90,\fscx100\fscy100)}"
         lines.append(f"Dialogue: 0,{seconds_to_ass(start)},{seconds_to_ass(end)},TVCaption,,0,0,0,,{prefix}{styled}")
 
     ass_path.parent.mkdir(parents=True, exist_ok=True)
@@ -175,7 +202,7 @@ def generate_ass_captions(
                     "text": _sanitize_ass_text(str(ch["text"])),
                 }
                 for ch in chunks
-                if _sanitize_ass_text(str(ch["text"]))
+                if _is_caption_worthy(str(ch["text"]))
             ],
             indent=2,
         ),
